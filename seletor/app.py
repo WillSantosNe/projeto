@@ -36,9 +36,38 @@ def registrar_validador():
 
 @app.route('/selecionar_validadores', methods=['POST'])
 def selecionar_validadores():
-    # Lógica para selecionar validadores com base no saldo de NoNameCoins
-    pass
+    try:
+        # Obter todos os validadores que podem ser selecionados (saldo mínimo e número de flags aceitável)
+        validadores = Validador.query.filter(Validador.qtdMoeda >= 50, Validador.flag <= 2).all()
 
+        # Eliminar validadores com mais de duas flags da seleção e possível rede
+        for validador in validadores:
+            if validador.flag > 2:
+                db.session.delete(validador)
+
+        # Ajustar a probabilidade de seleção com base nas flags
+        candidatos = []
+        for validador in validadores:
+            probabilidade = 1
+            if validador.flag == 1:
+                probabilidade *= 0.5  # Redução de 50% para flag 1
+            elif validador.flag == 2:
+                probabilidade *= 0.25  # Redução de 75% para flag 2
+
+            candidatos.extend([validador] * int(probabilidade * 100))  # Aumentar a chance de seleção baseada em probabilidade
+
+        # Selecionar aleatoriamente até três validadores
+        import random
+        if len(candidatos) >= 3:
+            selecionados = random.sample(candidatos, 3)
+        else:
+            return jsonify({"error": "Não há validadores suficientes disponíveis"}), 503  # Serviço indisponível
+
+        # Responder com os validadores escolhidos
+        return jsonify([{"id": v.id, "nome": v.nome, "qtdMoeda": v.qtdMoeda} for v in selecionados]), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 
