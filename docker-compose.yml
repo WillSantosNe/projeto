@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  banco:
+    build: ./banco
+    ports:
+      - "5000:5000"
+    command: python ./app.py
+
+  seletor:
+    build: ./seletor
+    ports:
+      - "5001:5001"
+    command: python ./app.py
+    depends_on:
+      - banco
+
+  validador:
+    build: ./validador
+    ports:
+      - "5002:5002"
+    command: python ./app.py
+    depends_on:
+      - seletor
+
+  
