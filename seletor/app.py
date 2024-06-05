@@ -1,27 +1,47 @@
-from time import time
-from flask import Flask, request, redirect, render_template, jsonify
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from dataclasses import dataclass
-from datetime import date, datetime
 
 app = Flask(__name__)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+# Configuração do banco de dados
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///../site.db'  # Caminho relativo ao banco de dados
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
-#Criando objeto validador
-@dataclass
+
 class Validador(db.Model):
-    id: int
-    nome: str
-    flag:int
-    
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(20), unique=False, nullable=False)
-    flag = db.Column(db.Integer)
+    nome = db.Column(db.String(100), nullable=False)
+    qtdMoeda = db.Column(db.Integer, nullable=False)
+    flag = db.Column(db.Integer, default=0)
 
-#rotas do validador 
-print("testando docker")
+    def __repr__(self):
+        return f'<Validador {self.nome}>'
 
+
+
+@app.route('/validadores', methods=['GET'])
+def listar_validadores():
+    validadores = Validador.query.all()
+    return jsonify([validador.to_dict() for validador in validadores]), 200
+
+@app.route('/validador', methods=['POST'])
+def registrar_validador():
+    data = request.get_json()
+    novo_validador = Validador(nome=data['nome'], qtdMoeda=data['qtdMoeda'])
+    db.session.add(novo_validador)
+    db.session.commit()
+    return jsonify(novo_validador.to_dict()), 201
+
+@app.route('/selecionar_validadores', methods=['POST'])
+def selecionar_validadores():
+    # Lógica para selecionar validadores com base no saldo de NoNameCoins
+    pass
+
+
+
+
+if __name__ == '__main__':
+    db.create_all()
+    app.run(debug=True)
