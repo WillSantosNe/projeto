@@ -13,7 +13,6 @@ db = SQLAlchemy(app)
 class Validador(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
-    ip = db.Column(db.String(15), nullable=False)
     qtdMoeda = db.Column(db.Integer, nullable=False)
     flag = db.Column(db.Integer, default=0)
 
@@ -30,7 +29,7 @@ def listar_validadores():
 @app.route('/validador', methods=['POST'])
 def registrar_validador():
     data = request.get_json()
-    novo_validador = Validador(nome=data['nome'], ip=data['ip'], qtdMoeda=data['qtdMoeda'])
+    novo_validador = Validador(nome=data['nome'], qtdMoeda=data['qtdMoeda'])
     db.session.add(novo_validador)
     db.session.commit()
     return jsonify(novo_validador.to_dict()), 201
