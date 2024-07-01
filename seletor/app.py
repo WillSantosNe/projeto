@@ -20,12 +20,14 @@ class Validador(db.Model):
     flag = db.Column(db.Integer, default=0)
     status = db.Column(db.Integer, default=0)
     tentativas = db.Column(db.Integer, default=0)
-    escolhas_consecutivas = db.Column(db.Integer, default=0)  # Novo campo para rastrear escolhas consecutivas
-    em_hold = db.Column(db.Boolean, default=False)  # Novo campo para indicar se está em hold
-    expulsoes = db.Column(db.Integer, default=0)  # Rastreia quantas vezes o validador foi expulso
+    # escolhas_consecutivas = db.Column(db.Integer, default=0)
+    em_hold = db.Column(db.Boolean, default=False)
+    expulsoes = db.Column(db.Integer, default=0)
+    transacoes_hold_restantes = db.Column(db.Integer, default=0)  # Novo campo para transações restantes em hold
 
     def __repr__(self):
         return f'<Validador {self.nome}>'
+
     
 
 
@@ -33,9 +35,13 @@ class Validador(db.Model):
 def verificar_hold(validador):
     if validador.escolhas_consecutivas >= 5:
         validador.em_hold = True
-        validador.escolhas_consecutivas = 0  # Reseta após colocar em hold
-    else:
-        validador.em_hold = False
+        validador.transacoes_hold_restantes = 5  # Inicia o contador de transações em hold
+        validador.escolhas_consecutivas = 0  # Reseta as escolhas consecutivas
+    elif validador.em_hold:
+        if validador.transacoes_hold_restantes > 0:
+            validador.transacoes_hold_restantes -= 1  # Decrementa o contador de hold
+        if validador.transacoes_hold_restantes == 0:
+            validador.em_hold = False  # Remove o validador do estado de hold
     db.session.commit()
 
 
