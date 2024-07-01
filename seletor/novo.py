@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from dataclasses import dataclass
 import random
 import time
 
@@ -11,6 +12,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Initialize SQLAlchemy
 db = SQLAlchemy(app)
 
+@dataclass
 class Validador(db.Model):
     """
     Modelo de validador para a base de dados.
@@ -27,6 +29,7 @@ class Validador(db.Model):
     transacoes_coerentes = db.Column(db.Integer, default=0)
     reintegracoes = db.Column(db.Integer, default=0)
 
+@dataclass
 class Transacao(db.Model):
     """
     Modelo de transação para a base de dados.

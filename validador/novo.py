@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from pybreaker import CircuitBreaker, CircuitBreakerError
+from dataclasses import dataclass
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
@@ -11,20 +12,23 @@ db = SQLAlchemy(app)
 # Configuração do Circuit Breaker
 breaker = CircuitBreaker(fail_max=3, reset_timeout=60)
 
+@dataclass
 class Cliente(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    saldo = db.Column(db.Integer, nullable=False)
+    saldo = db.Column(db.Float, nullable=False)
     ultima_transacao = db.Column(db.DateTime, nullable=True)
 
+@dataclass
 class Transacao(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     remetente = db.Column(db.Integer, nullable=False)
     recebedor = db.Column(db.Integer, nullable=False)
-    valor = db.Column(db.Integer, nullable=False)
+    valor = db.Column(db.Float, nullable=False)
     status = db.Column(db.Integer, default=0)
     horario = db.Column(db.DateTime, nullable=False)
     chave_unica = db.Column(db.String(64), nullable=False)
 
+@dataclass
 class Validador(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(20), nullable=False)
@@ -65,8 +69,11 @@ def validar_transacao():
 def validar_transacao_saldo(transacao):
     remetente = Cliente.query.get(transacao.remetente)
     taxa = transacao.valor * 0.05  # Taxa de 5%
+
     return remetente.saldo >= transacao.valor + taxa
 
+
+@app.route('/hora', methods = ['GET'])
 def validar_horario_transacao(transacao):
     now = datetime.utcnow()
     remetente = Cliente.query.get(transacao.remetente)
