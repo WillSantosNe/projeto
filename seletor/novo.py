@@ -50,8 +50,12 @@ def registrar_validador():
     Requer um saldo mínimo para o registro e retorna erro se o saldo não for suficiente.
     """
     data = request.get_json()
+
+    # Não registra o validador caso seu saldo seja menor que 50.
     if data['saldo'] < 50:
         return jsonify({"error": "Saldo insuficiente para registrar validador"}), 400
+    
+    # Cria validador
     novo_validador = Validador(
         nome=data['nome'],
         ip=data['ip'],
@@ -60,9 +64,15 @@ def registrar_validador():
         consecutivas=0,
         escolhas=0
     )
+
+    # Adiciona validador no banco de dados.
     db.session.add(novo_validador)
     db.session.commit()
+
+    # Retorna mensagem indicando que o registro foi feito.
     return jsonify({"message": "Validador registrado com sucesso", "validador_id": novo_validador.id}), 201
+
+
 
 @app.route('/seletor/selecionar', methods=['POST'])
 def selecionar_validadores():
@@ -71,21 +81,30 @@ def selecionar_validadores():
     Implementa um mecanismo de espera caso menos de três validadores estejam disponíveis.
     """
     data = request.get_json()
+
+    # Procura transação pelo seu ID.
     transacao_id = data['transacao_id']
     transacao = Transacao.query.get(transacao_id)
     if not transacao:
         return jsonify({"error": "Transação não encontrada"}), 404
 
     try:
+        # Faz a escolha dos validadores.
         validadores = escolher_validadores(transacao.valor)
+
+        # Se houver menos de 3 validadores, entra em espera de 60 segundos e tenta novamente.
         if len(validadores) < 3:
-            time.sleep(60)  # Delay de 60 segundos antes de tentar novamente
+            time.sleep(60)
             return selecionar_validadores()
 
         for validador in validadores:
-            transacao.validadores.append(validador)
+            transacao.validadores.append(validador) #Adiciona na lista de validadores da transação
             validador.escolhas += 1
+
+            # Atualiza as vezes consecutivas ou reseta.
             validador.consecutivas = (validador.consecutivas + 1) if validador.consecutivas >= 0 else -5
+
+            # Distribui a recomensa proporcional ao valor da transação entre os validadores.
             recompensa = 0.015 * transacao.valor
             validador.recompensas += recompensa / len(validadores)
 
@@ -94,27 +113,43 @@ def selecionar_validadores():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+
 def escolher_validadores(valor_transacao):
     """
     Auxiliar para selecionar validadores com base em critérios como saldo e número de flags.
     Retorna uma lista de validadores selecionados.
     """
+    # Seleciona candidatos que tenham saldo maior ou igual a 50 e tenham no máximo 2 flags.
     candidatos = Validador.query.filter(Validador.saldo >= 50, Validador.flags <= 2).all()
+
+    # Lista que irá armazenar os validadores selecionados.
     selecionados = []
+
     for validador in candidatos:
-        if validador.consecutivas < 0 or validador.flags > 2:
+        # Ignora validadores em Hold.
+        if validador.consecutivas < 0:
             continue
+        
+        # Faz o cálculo da chance (metade da razão entre o saldo do validador e o valor da transação, mas limitada a um máximo de 20%)
         chance = min(validador.saldo / valor_transacao / 2, 0.20)
+
+        # Se houver uma flag, a chance é reduzida pela metade.
         if validador.flags == 1:
             chance *= 0.5
+        # Se houver duas flags, a chance é reduzida a um quarto.
         elif validador.flags == 2:
             chance *= 0.25
 
+        # Gera um número aleatório, e se ele for menor que a chance o validador é adicionado à lista. 
         if random.random() < chance:
             selecionados.append(validador)
             if len(selecionados) >= 3:
                 break
+
+    # Retorna lista de validadores selecionados.
     return selecionados
+
 
 @app.route('/seletor/consenso', methods=['POST'])
 def calcular_consenso():
