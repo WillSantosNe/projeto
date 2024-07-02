@@ -4,22 +4,34 @@ services:
     build: ./banco
     ports:
       - "5000:5000"
-    command: python ./app.py
+    command: python ./main.py
 
   seletor:
     build: ./seletor
     ports:
       - "5001:5001"
-    command: python ./app.py
+    command: python seletor/app.py
     depends_on:
       - banco
-
-  validador:
-    build: ./validador
+  validador1:
+    build: .
     ports:
       - "5002:5002"
-    command: python ./app.py
-    depends_on:
-      - seletor
+    command: python validador/validador.py --port=5002
+  validador2:
+    build: .
+    ports:
+      - "5003:5003"
+    command: python validador/validador.py --port=5003
+  validador3:
+    build: .
+    ports:
+      - "5004:5004"
+    command: python validador/validador.py --port=5004
+  validador4:
+    build: .
+    ports:
+      - "5005:5005"
+    command: python validador/validador.py --port=5005
 
   
