@@ -258,3 +258,6 @@ def adicionar_validador(nome, ip):
 # Inicializa o aplicativo.
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+# a
