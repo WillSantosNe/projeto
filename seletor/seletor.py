@@ -202,3 +202,11 @@ def processar_consenso(validadores, transacao):
 # Inicializa o aplicativo.
 if __name__ == '__main__':
     app.run(debug=True)
+
+"""
+Implementar funcionalidades de inserção e remoção de validadores.
+Sincronizar o tempo entre o sistema seletor e os validadores.
+Melhorar o armazenamento de logs para incluir mais detalhes sobre cada eleição de validadores.
+Implementar mecanismos explícitos de tolerância a falhas, como tratamento de exceções e recuperação.
+
+"""
