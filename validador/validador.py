@@ -72,10 +72,11 @@ def validar_transacao():
             chave_unica=data['chave_unica']
         )
 
+        # Selecionando o primeiro validador de acordo com a chave única para evitar repetição.
         validador = Validador.query.filter_by(chave_unica=transacao.chave_unica).first()
         if not validador:
             app.logger.warning(f'Chave única inválida: {transacao.chave_unica}')
-            return jsonify({'status': 2}), 400  # Chave única inválida
+            return jsonify({'status': 0}), 500  # Chave única inválida - inconsistencia
 
         # Regra de saldo e taxa
         taxa = transacao.valor * 0.2
@@ -91,7 +92,7 @@ def validar_transacao():
         # Regra de limite de transações
         if validador.transacoes_no_minuto > 100:
             app.logger.warning(f'Limite de transações por minuto excedido')
-            return jsonify({'status': 2}), 400
+            return jsonify({'status': 0}), 500 # inconsistencia
 
         # Se passar por todas as validações
         validador.ultimo_horario = transacao.horario
@@ -103,7 +104,7 @@ def validar_transacao():
     except Exception as e:
         #Saida com return status 0
         app.logger.error(f'Erro ao validar transação: {str(e)}')
-        return jsonify({'status': 0}), 500
+        return jsonify({'status': 0}), 500 # inconsistencia
 
 # Inicializa o aplicativo
 if __name__ == '__main__':

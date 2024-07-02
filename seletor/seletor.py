@@ -57,6 +57,7 @@ class Validador(db.Model):
     retorno_pendente: bool
     em_hold: int
     chave_unica: str
+    trans_corretas : int
 
     id = db.Column(db.Integer, primary_key=True)  # Chave primária.
     nome = db.Column(db.String(100), nullable=False)  # Nome do validador.
@@ -68,7 +69,7 @@ class Validador(db.Model):
     retorno_pendente = db.Column(db.Boolean, default=False)  # Indica se o retorno está pendente.
     em_hold = db.Column(db.Integer, default=0)  # Número de ciclos em hold.
     chave_unica = db.Column(db.String(20), nullable=False)  # Chave única do validador.
-    trans_corretas = db.Column(db.Integer, default=0)
+    trans_corretas = db.Column(db.Integer, default=0) # Número de transações corretas.
 
     def __repr__(self):
         return f"<Validador {self.nome}>"
@@ -90,7 +91,6 @@ class Validador(db.Model):
         if self.vezes_banido > 2:
             db.session.delete(self)  # Remove o validador do banco de dados.
         else:
-            self.saldo = 0  # Reseta o saldo do validador.
             self.retorno_pendente = True  # Marca o retorno como pendente.
             self.flags = 0  # Reseta as flags.
         db.session.commit()  # Salva as mudanças no banco de dados.
@@ -104,12 +104,13 @@ class Validador(db.Model):
 
     # Reintegra o validador com um depósito mínimo necessário.
     def reintegrar(self, deposito):
-        #Ajuste para se sempre sempre precisar de +50 para entrar novamente
-        saldo_necessário = 50 * self.vezes_banido
+
+        # O saldo necessário passa a ser o dobro do saldo anterior.
+        saldo_necessário = self.saldo * 2
+
         if deposito >= saldo_necessário:
             self.saldo = deposito  # Atualiza o saldo.
             self.retorno_pendente = False  # Marca o retorno como não pendente.
-            self.flags = 0  # Reseta as flags.
             db.session.commit()  # Salva as mudanças no banco de dados.
             return True
         return False
@@ -119,9 +120,13 @@ class Validador(db.Model):
 # Rota para reintegrar um validador com um depósito mínimo.
 @app.route('/reintegrar_validador/<int:validador_id>', methods=['POST'])
 def reintegrar_validador(validador_id):
-    deposito = request.json.get('deposito')  # Obtém o depósito do corpo da requisição.
+
+    # Obtém o depósito do corpo da requisição.
+    deposito = request.json.get('deposito')  
+
+    # Obtem o validador pelo ID e verifica se ele está pendente para o retorno.
     validador = db.session.get(Validador, validador_id)
-    if validador and validador.retorno_pendente:  # Verifica se o validador está pendente para retorno.
+    if validador and validador.retorno_pendente:
         if validador.reintegrar(deposito):  # Tenta reintegrar o validador.
             return jsonify({'message': 'Validador reintegrado com sucesso.'}), 200
         else:
@@ -138,16 +143,16 @@ def processar_transacao():
         app.logger.info(f'Recebendo transação: {transacao}')
         validadores_selecionados = selecionar_validadores(transacao['valor'])  # Seleciona validadores para a transação.
 
-        if len(validadores_selecionados) < 3:
-            app.logger.warning('Validadores insuficientes para processar a transação.')
-            return jsonify({'error': 'Não há validadores suficientes. Tente novamente mais tarde.'}), 503
-
-        resultado_consenso = processar_consenso(validadores_selecionados, transacao)  # Processa o consenso.
+        # Processa o consenso.
+        resultado_consenso = processar_consenso(validadores_selecionados, transacao)  
         app.logger.info(f'Resultado do consenso: {resultado_consenso}')
         return jsonify(resultado_consenso)
+    
     except Exception as e:
         app.logger.error(f'Erro ao processar transação: {str(e)}')
         return jsonify({'error': 'Erro interno do servidor'}), 500
+
+
 
 # Função modificada para garantir que o peso de escolha não ultrapasse 20%.
 def selecionar_validadores(valor_transacao):
@@ -156,56 +161,79 @@ def selecionar_validadores(valor_transacao):
         peso_total = sum(v.saldo for v in validadores_potenciais)
         validadores_escolhidos = []
         
+        # Define peso de acordo com a quantidade de flags do validador.
         for v in validadores_potenciais:
             peso = v.saldo * (0.5 if v.flags == 1 else 0.25 if v.flags == 2 else 1)
 
             # Limitando o peso de escolha a no máximo 20% do total.
             peso_ajustado = min(peso, 0.2 * peso_total)
+
+            # Escolhendo de acordo com o peso.
             if random.random() < peso_ajustado / peso_total:
                 validadores_escolhidos.append(v)
                 if len(validadores_escolhidos) == 3:
                     break
         
+        # Se houver menos que 3 validadores, espera um minuto e tenta novamente
         if len(validadores_escolhidos) < 3:
-            time.sleep(60)  # Espera e tenta novamente
+            time.sleep(60) 
             return selecionar_validadores(valor_transacao)
         
+        # Retorna lista de validadores escolhidos.
         return validadores_escolhidos
+    
     except Exception as e:
         app.logger.error(f'Erro ao selecionar validadores: {str(e)}')
         raise
+
+
 
 # Função para processar o consenso entre os validadores.
 def processar_consenso(validadores, transacao):
     try:
         votos = []
+
+        # Percorre validadores da lista de validadores escolhidos.
         for validador in validadores:
-            url = f"http://{validador.ip}/validar_transacao"  # URL do endpoint de validação do validador.
+
+            # URL do endpoint de validação do validador.
+            url = f"http://{validador.ip}/validar_transacao"  
             headers = {'Content-Type': 'application/json'}
             response = requests.post(url, json=transacao, headers=headers, timeout=5)  # Envia a transação para validação.
+
+            # Se a resposta for bem sucedida, adiciona na lista de votos.
             if response.status_code == 200:
                 votos.append((response.json()['status'], validador))
-            else:
+            elif response.status_code == 400:
                 validador.incrementar_flags()  # Incrementa as flags se houver erro na response.
+            else:
+                continue
+
 
         aprovacoes = [v for v, _ in votos if v == 1]
 
+        # Se o numero de aprovações for maior que a metade dos votos, escolhe por consenso.
         if len(aprovacoes) > len(votos) / 2:
             transacao['status'] = 1
             distribuir_recompensas(validadores, transacao['valor'])
         else:
             transacao['status'] = 2
 
+        # Percorrer os validadores dos votos
         for _, validador in votos:
-            if validador.escolhas_consecutivas >= 5:            
-                validador.escolhas_consecutivas = 0  # Reset após cada votação, independentemente do resultado
-            db.session.commit()
+            validador.trans_corretas += 1
 
-        app.logger.info(f'Resultado dos votos: {votos}')
+            # Se o validador possuir 10000 transações corretas, ele decrementa as flags.
+            if validador.trans_corretas >= 10000:
+                validador.decrementar_flags()
+
+            validador.colocar_em_hold()
+            db.session.commit()
         return transacao
     except Exception as e:
         app.logger.error(f'Erro ao processar consenso: {str(e)}')
         raise
+
 
 
 # Implementação da distribuição de recompensas
@@ -215,19 +243,26 @@ def distribuir_recompensas(validadores, valor_transacao):
     recompensa_validadores = total_recompensa - recompensa_seletor
     recompensa_individual = recompensa_validadores / len(validadores)
     
+    # Aumenta o saldo do validador de acordo com usa recompensa individual.
     for validador in validadores:
         validador.saldo += recompensa_individual
         db.session.commit()
 
+    # Log de depuração.
     app.logger.info(f'Recompensas distribuídas. Seletor: {recompensa_seletor}, Validadores: {recompensa_individual} cada')
 
+
+######################################################################################################
 
 @app.route('/validador/<nome>/<ip>', methods=['POST'])
 def adicionar_validador(nome, ip):
     try:
+        # Cria uma chave única para o validador
         chave_unica = str(uuid.uuid4())
+
         ip_completo = f"{ip}"
 
+        # Cria objeto validador e adiciona no banco de dados.
         novo_validador = Validador(
             nome=nome,
             ip=ip_completo,
@@ -258,6 +293,3 @@ def adicionar_validador(nome, ip):
 # Inicializa o aplicativo.
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-# a
