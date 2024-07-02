@@ -11,6 +11,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 import time
 
+
+######################################################################################################
 # Inicializa o aplicativo Flask.
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'  # Define a URI do banco de dados SQLite.
@@ -21,6 +23,8 @@ app.config['DEBUG'] = True  # Habilita o modo debug.
 db = SQLAlchemy(app)  # Conecta o SQLAlchemy ao aplicativo Flask.
 migrate = Migrate(app, db)  # Habilita migrações do banco de dados.
 
+
+######################################################################################################
 # Configura o log.
 logging.basicConfig(level=logging.DEBUG)
 app.logger.setLevel(logging.DEBUG)
@@ -37,6 +41,8 @@ file_handler.setLevel(logging.INFO)
 app.logger.setLevel(logging.INFO)
 app.logger.addHandler(file_handler)
 app.logger.info('Seletor startup')
+
+######################################################################################################
 
 # Define o modelo de dados para o Validador usando SQLAlchemy.
 @dataclass
@@ -62,6 +68,7 @@ class Validador(db.Model):
     retorno_pendente = db.Column(db.Boolean, default=False)  # Indica se o retorno está pendente.
     em_hold = db.Column(db.Integer, default=0)  # Número de ciclos em hold.
     chave_unica = db.Column(db.String(20), nullable=False)  # Chave única do validador.
+    trans_corretas = db.Column(db.Integer, default=0)
 
     def __repr__(self):
         return f"<Validador {self.nome}>"
@@ -71,6 +78,11 @@ class Validador(db.Model):
         self.flags += 1
         if self.flags > 2:
             self.banir_validador()
+
+    def decrementar_flags(self):
+        if self.flags > 0:
+            self.flags -= 1
+            self.trans_corretas = 0
 
     # Bane o validador e atualiza suas informações no banco de dados.
     def banir_validador(self):
@@ -101,6 +113,8 @@ class Validador(db.Model):
             db.session.commit()  # Salva as mudanças no banco de dados.
             return True
         return False
+    
+######################################################################################################
 
 # Rota para reintegrar um validador com um depósito mínimo.
 @app.route('/reintegrar_validador/<int:validador_id>', methods=['POST'])
@@ -113,6 +127,8 @@ def reintegrar_validador(validador_id):
         else:
             return jsonify({'error': 'Depósito insuficiente ou validador não está elegível para retorno.'}), 400
     return jsonify({'error': 'Validador não encontrado.'}), 404
+
+######################################################################################################
 
 # Rota para processar uma transação.
 @app.route('/transacoes', methods=['POST'])
@@ -133,42 +149,27 @@ def processar_transacao():
         app.logger.error(f'Erro ao processar transação: {str(e)}')
         return jsonify({'error': 'Erro interno do servidor'}), 500
 
-# Função para selecionar validadores para uma transação.
+# Função modificada para garantir que o peso de escolha não ultrapasse 20%.
 def selecionar_validadores(valor_transacao):
     try:
-        validadores_potenciais = Validador.query.filter(Validador.saldo >= 50).all()  # Obtém validadores com saldo >= 50.
-        validadores_filtrados = []
-        for v in validadores_potenciais:
-            if v.flags > 2:
-                continue  # Pula validadores com mais de 2 flags.
-            peso = v.saldo
-            if v.flags == 1:
-                peso *= 0.5  # Reduz o peso se o validador tiver 1 flag.
-            elif v.flags == 2:
-                peso *= 0.25  # Reduz mais ainda o peso se o validador tiver 2 flags.
-            validadores_filtrados.append((v, peso))
-
-        total_peso = sum(peso for _, peso in validadores_filtrados)  # Calcula o peso total.
-        max_peso = 0.2 * total_peso  # Define o peso máximo permitido.
-        validadores_filtrados = [(v, min(peso, max_peso)) for v, peso in validadores_filtrados]
-
+        validadores_potenciais = Validador.query.filter(Validador.saldo >= 50, Validador.flags <= 2).all()
+        peso_total = sum(v.saldo for v in validadores_potenciais)
         validadores_escolhidos = []
-        if len(validadores_filtrados) >= 3:
-            validadores_escolhidos = random.choices(
-                [v for v, _ in validadores_filtrados],
-                weights=[peso for _, peso in validadores_filtrados],
-                k=3
-            )  # Seleciona 3 validadores aleatoriamente com base no peso.
-        else:
-            time.sleep(60)
+        
+        for v in validadores_potenciais:
+            peso = v.saldo * (0.5 if v.flags == 1 else 0.25 if v.flags == 2 else 1)
+
+            # Limitando o peso de escolha a no máximo 20% do total.
+            peso_ajustado = min(peso, 0.2 * peso_total)
+            if random.random() < peso_ajustado / peso_total:
+                validadores_escolhidos.append(v)
+                if len(validadores_escolhidos) == 3:
+                    break
+        
+        if len(validadores_escolhidos) < 3:
+            time.sleep(60)  # Espera e tenta novamente
             return selecionar_validadores(valor_transacao)
-
-        for validator in validadores_escolhidos:
-            validator.escolhas_consecutivas += 1  # Incrementa as escolhas consecutivas.
-            validator.colocar_em_hold()  # Coloca o validador em hold se necessário.
-            db.session.commit()  # Salva as mudanças no banco de dados.
-
-        app.logger.info(f'Validadores selecionados: {[v.nome for v in validadores_escolhidos]}')
+        
         return validadores_escolhidos
     except Exception as e:
         app.logger.error(f'Erro ao selecionar validadores: {str(e)}')
@@ -181,32 +182,79 @@ def processar_consenso(validadores, transacao):
         for validador in validadores:
             url = f"http://{validador.ip}/validar_transacao"  # URL do endpoint de validação do validador.
             headers = {'Content-Type': 'application/json'}
-            resposta = requests.post(url, json=transacao, headers=headers, timeout=5)  # Envia a transação para validação.
-            if resposta.status_code == 200:
-                votos.append(resposta.json())  # Adiciona o voto à lista de votos.
+            response = requests.post(url, json=transacao, headers=headers, timeout=5)  # Envia a transação para validação.
+            if response.status_code == 200:
+                votos.append((response.json()['status'], validador))
             else:
-                validador.incrementar_flags()  # Incrementa as flags se houver erro na resposta.
+                validador.incrementar_flags()  # Incrementa as flags se houver erro na response.
 
-        votos_sim = sum(1 for voto in votos if voto['decisao'] == 'sim')
-        votos_nao = sum(1 for voto in votos if voto['decisao'] == 'nao')
+        aprovacoes = [v for v, _ in votos if v == 1]
 
-        resultado = 'sim' if votos_sim > votos_nao else 'nao'  # Determina o resultado do consenso.
-        if resultado == 'nao':
-            for validador in validadores:
-                validador.incrementar_flags()  # Incrementa as flags se a decisão for "não".
-        return {'resultado': resultado}
+        if len(aprovacoes) > len(votos) / 2:
+            transacao['status'] = 1
+            distribuir_recompensas(validadores, transacao['valor'])
+        else:
+            transacao['status'] = 2
+
+        for _, validador in votos:
+            if validador.escolhas_consecutivas >= 5:            
+                validador.escolhas_consecutivas = 0  # Reset após cada votação, independentemente do resultado
+            db.session.commit()
+
+        app.logger.info(f'Resultado dos votos: {votos}')
+        return transacao
     except Exception as e:
         app.logger.error(f'Erro ao processar consenso: {str(e)}')
         raise
 
+
+# Implementação da distribuição de recompensas
+def distribuir_recompensas(validadores, valor_transacao):
+    total_recompensa = 0.015 * valor_transacao
+    recompensa_seletor = 0.005 * valor_transacao
+    recompensa_validadores = total_recompensa - recompensa_seletor
+    recompensa_individual = recompensa_validadores / len(validadores)
+    
+    for validador in validadores:
+        validador.saldo += recompensa_individual
+        db.session.commit()
+
+    app.logger.info(f'Recompensas distribuídas. Seletor: {recompensa_seletor}, Validadores: {recompensa_individual} cada')
+
+
+@app.route('/validador/<nome>/<ip>', methods=['POST'])
+def adicionar_validador(nome, ip):
+    try:
+        chave_unica = str(uuid.uuid4())
+        ip_completo = f"{ip}"
+
+        novo_validador = Validador(
+            nome=nome,
+            ip=ip_completo,
+            ip=ip,  # Use the provided IP, no need to append port here
+            saldo=10000,
+            flags=0,
+            escolhas_consecutivas=0,
+            vezes_banido=0,
+            retorno_pendente=False,
+            em_hold=0,
+            chave_unica=chave_unica,
+            trans_corretas = 0
+        )
+        db.session.add(novo_validador)
+        db.session.commit()
+
+        return jsonify({
+            'id': novo_validador.id,
+            'nome': novo_validador.nome,
+            'ip': novo_validador.ip,
+            'saldo': novo_validador.saldo,
+            'chave_unica': chave_unica
+        }), 201
+    except Exception as e:
+        app.logger.error(f'Erro ao adicionar validador: {str(e)}')
+        return jsonify({'error': 'Erro ao adicionar validador'}), 500
+
 # Inicializa o aplicativo.
 if __name__ == '__main__':
     app.run(debug=True)
-
-"""
-Implementar funcionalidades de inserção e remoção de validadores.
-Sincronizar o tempo entre o sistema seletor e os validadores.
-Melhorar o armazenamento de logs para incluir mais detalhes sobre cada eleição de validadores.
-Implementar mecanismos explícitos de tolerância a falhas, como tratamento de exceções e recuperação.
-
-"""
