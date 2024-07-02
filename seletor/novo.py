@@ -46,6 +46,13 @@ transacao_validador = db.Table('transacao_validador',
     db.Column('validador_id', db.Integer, db.ForeignKey('validador.id'), primary_key=True)
 )
 
+@app.route('/validadores', methods=['GET'])  
+def listar_validadores():
+    validadores = Validador.query.all()
+    return jsonify([validador.to_dict() for validador in validadores]), 200
+
+
+
 @app.route('/seletor/registrar', methods=['POST'])
 def registrar_validador():
     """
