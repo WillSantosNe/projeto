@@ -9,6 +9,7 @@ import uuid
 import requests
 import logging
 from logging.handlers import RotatingFileHandler
+import time
 
 # Inicializa o aplicativo Flask.
 app = Flask(__name__)
@@ -91,7 +92,8 @@ class Validador(db.Model):
 
     # Reintegra o validador com um depósito mínimo necessário.
     def reintegrar(self, deposito):
-        saldo_necessário = 100
+        #Ajuste para se sempre sempre precisar de +50 para entrar novamente
+        saldo_necessário = 50 * self.vezes_banido
         if deposito >= saldo_necessário:
             self.saldo = deposito  # Atualiza o saldo.
             self.retorno_pendente = False  # Marca o retorno como não pendente.
@@ -157,6 +159,9 @@ def selecionar_validadores(valor_transacao):
                 weights=[peso for _, peso in validadores_filtrados],
                 k=3
             )  # Seleciona 3 validadores aleatoriamente com base no peso.
+        else:
+            time.sleep(60)
+            return selecionar_validadores(valor_transacao)
 
         for validator in validadores_escolhidos:
             validator.escolhas_consecutivas += 1  # Incrementa as escolhas consecutivas.
