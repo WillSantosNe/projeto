@@ -6,17 +6,17 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 
-# Initialize Flask app
+# Inicializa o aplicativo Flask
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'  # Define a URI do banco de dados SQLite
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Desabilita o rastreamento de modificações do SQLAlchemy para melhorar a performance
+db = SQLAlchemy(app)  # Inicializa o SQLAlchemy com o aplicativo Flask
 
-# Setup logging
+# Configura o log
 if not os.path.exists('logs'):
-    os.makedirs('logs')
+    os.makedirs('logs')  # Cria o diretório de logs se não existir
 
-file_handler = RotatingFileHandler('logs/validador.log', maxBytes=10240, backupCount=10)
+file_handler = RotatingFileHandler('logs/validador.log', maxBytes=10240, backupCount=10)  # Define um log rotativo
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
 ))
@@ -25,6 +25,7 @@ app.logger.setLevel(logging.INFO)
 app.logger.addHandler(file_handler)
 app.logger.info('Validador startup')
 
+# Define o modelo Transacao usando SQLAlchemy
 class Transacao(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     remetente_id = db.Column(db.Integer, nullable=False)
@@ -37,6 +38,7 @@ class Transacao(db.Model):
     def __repr__(self):
         return f"<Transacao {self.id}>"
 
+# Define o modelo Validador usando SQLAlchemy
 class Validador(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(200), primary_key=False)
@@ -45,7 +47,6 @@ class Validador(db.Model):
     saldo = db.Column(db.Integer, nullable=False)
     transacoes_no_minuto = db.Column(db.Integer, default=0)
     ultimo_horario = db.Column(db.DateTime, default=datetime.utcnow)
-    saldo = db.Column(db.Integer, nullable=False)
     flags = db.Column(db.Integer, default=0)
     escolhas_consecutivas = db.Column(db.Integer, default=0)
     vezes_banido = db.Column(db.Integer, default=0)
@@ -54,15 +55,15 @@ class Validador(db.Model):
 
     def __repr__(self):
         return f"<Validador {self.id}>"
-    
 
+# Rota para validar uma transação
 @app.route('/validar_transacao', methods=['POST'])
 def validar_transacao():
     try:
-        data = request.json
+        data = request.json  # Obtém os dados da requisição
         app.logger.info(f'Recebendo transação para validação: {data}')
         
-        # Ajustar a formatação da data para lidar com microssegundos
+        # Ajusta a formatação da data para lidar com microssegundos
         transacao = Transacao(
             remetente_id=data['remetente'],
             recebedor_id=data['recebedor'],
@@ -102,9 +103,8 @@ def validar_transacao():
         app.logger.error(f'Erro ao validar transação: {str(e)}')
         return jsonify({'status': 2}), 500
 
+# Inicializa o aplicativo
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
-    app.run(host='0.0.0.0', port=int(sys.argv[1]), debug=True)
-
-
+        db.create_all()  # Cria as tabelas do banco de dados
+    app.run(host='0.0.0.0', port=int(sys.argv[1]), debug=True)  # Executa o servidor Flask
