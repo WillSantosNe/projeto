@@ -78,7 +78,8 @@ def validar_transacao():
             return jsonify({'status': 2}), 400  # Chave única inválida
 
         # Regra de saldo e taxa
-        if validador.saldo < (transacao.valor +(transacao.valor*0.2)):
+        taxa = transacao.valor * 0.2
+        if validador.saldo < (transacao+taxa):
             app.logger.warning(f'Saldo insuficiente do validador: {validador.saldo}')
             return jsonify({'status': 2}), 400
 
@@ -100,8 +101,9 @@ def validar_transacao():
         db.session.commit()
         return jsonify({'status': 1}), 200
     except Exception as e:
+        #Saida com return status 0
         app.logger.error(f'Erro ao validar transação: {str(e)}')
-        return jsonify({'status': 2}), 500
+        return jsonify({'status': 0}), 500
 
 # Inicializa o aplicativo
 if __name__ == '__main__':
