@@ -14,10 +14,15 @@ from logging.handlers import RotatingFileHandler
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['DEBUG'] = True
 
 # Initialize SQLAlchemy
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+app.logger.setLevel(logging.DEBUG)
 
 # Setup logging
 if not os.path.exists('logs'):
@@ -58,6 +63,7 @@ class Validador(db.Model):
 
     def __repr__(self):
         return f"<Validador {self.nome}>"
+
 
     def incrementar_flags(self):
         self.flags += 1
@@ -109,6 +115,7 @@ def processar_transacao():
         validadores_selecionados = selecionar_validadores(transacao['valor'])
 
         if len(validadores_selecionados) < 3:
+            # colocar para esperar 1 minuto
             app.logger.warning('Validadores insuficientes para processar a transação.')
             return jsonify({'error': 'Não há validadores suficientes. Tente novamente mais tarde.'}), 503
 
@@ -120,6 +127,7 @@ def processar_transacao():
         return jsonify({'error': 'Erro interno do servidor'}), 500
 
 def selecionar_validadores(valor_transacao):
+    # colocar para nao selecionar o mesmo validador
     try:
         validadores_potenciais = Validador.query.filter(Validador.saldo >= 50).all()
         validadores_filtrados = []
@@ -156,8 +164,9 @@ def processar_consenso(validadores, transacao):
     try:
         votos = []
         for validador in validadores:
+            # Usando o nome do serviço para a URL
             url = f"http://{validador.ip}/validar_transacao"
-            app.logger.info(f'Enviando transação para validador: {validador.nome} em {validador.ip}')
+            app.logger.info(f'Enviando transação para validador: {validador.nome} em {url}')
             response = requests.post(url, json=transacao)
             if response.status_code == 200:
                 votos.append((response.json()['status'], validador))
@@ -179,6 +188,7 @@ def processar_consenso(validadores, transacao):
         app.logger.error(f'Erro ao processar consenso: {str(e)}')
         raise
 
+
 def distribuir_recompensas(validadores, valor_transacao):
     try:
         total_recompensa = 0.015 * valor_transacao
@@ -198,11 +208,9 @@ def distribuir_recompensas(validadores, valor_transacao):
 def adicionar_validador(nome, ip):
     try:
         chave_unica = str(uuid.uuid4())
-        ip_completo = f"{ip}"
-
         novo_validador = Validador(
             nome=nome,
-            ip=ip_completo,
+            ip=ip,  # Use the provided IP, no need to append port here
             saldo=10000,
             flags=0,
             escolhas_consecutivas=0,
@@ -225,7 +233,24 @@ def adicionar_validador(nome, ip):
         app.logger.error(f'Erro ao adicionar validador: {str(e)}')
         return jsonify({'error': 'Erro ao adicionar validador'}), 500
 
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    app.run(port=5001, debug=True)
+        # validador1 = Validador(nome="validador1", ip="validador1:5002", chave_unica="a",saldo=10000,flags=0,escolhas_consecutivas=0,vezes_banido=0,retorno_pendente=False,em_hold=0)
+        # validador2 = Validador(nome="validador2", ip="validador2:5003", chave_unica="a",saldo=10000,flags=0,escolhas_consecutivas=0,vezes_banido=0,retorno_pendente=False,em_hold=0)
+        # validador3 = Validador(nome="validador3", ip="validador3:5004", chave_unica="a",saldo=10000,flags=0,escolhas_consecutivas=0,vezes_banido=0,retorno_pendente=False,em_hold=0)
+        # validador4 = Validador(nome="validador4", ip="validador4:5005", chave_unica="a",saldo=10000,flags=0,escolhas_consecutivas=0,vezes_banido=0,retorno_pendente=False,em_hold=0)
+
+
+        # db.session.add(validador1)
+        # db.session.add(validador2)
+        # db.session.add(validador3)
+        # db.session.add(validador4)
+        # db.session.commit()
+    app.run(host='0.0.0.0', port=5001, debug=True)
+
+
+
+
+

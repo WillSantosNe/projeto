@@ -8,7 +8,7 @@ import requests
 
 app = Flask(__name__)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db' 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
@@ -198,45 +198,48 @@ def ListarTransacoes():
     
 @app.route('/transacoes/<int:rem>/<int:reb>/<int:valor>', methods=['POST'])
 def CriaTransacao(rem, reb, valor):
-    if request.method == 'POST':
-        remetente = db.session.get(Cliente, rem)
-        recebedor = db.session.get(Cliente, reb)
+    remetente = db.session.get(Cliente, rem)
+    recebedor = db.session.get(Cliente, reb)
 
-        if not remetente or not recebedor:
-            return jsonify({'error': 'Remetente ou Recebedor não encontrado.'}), 404
+    if not remetente or not recebedor:
+        return jsonify({'error': 'Remetente ou Recebedor não encontrado.'}), 404
 
-        if remetente.qtdMoeda < valor:
-            return jsonify({'error': 'Saldo insuficiente do remetente.'}), 400
+    if remetente.qtdMoeda < valor:
+        return jsonify({'error': 'Saldo insuficiente do remetente.'}), 400
 
-        # Atualiza os saldos dos clientes
-        remetente.qtdMoeda -= valor
-        recebedor.qtdMoeda += valor
-        db.session.commit()
+    # Atualiza os saldos dos clientes
+    remetente.qtdMoeda -= valor
+    recebedor.qtdMoeda += valor
+    db.session.commit()
 
-        # Cria a transação
-        objeto = Transacao(remetente=rem, recebedor=reb, valor=valor, status=0, horario=datetime.now())
-        db.session.add(objeto)
-        db.session.commit()
+    # Cria a transação
+    transacao = Transacao(
+        remetente=rem,
+        recebedor=reb,
+        valor=valor,
+        horario=datetime.utcnow(),  # Define o horário atual
+        status=0  # Define o status inicial
+    )
+    db.session.add(transacao)
+    db.session.commit()
 
-        seletores = Seletor.query.all()
-        for seletor in seletores:
-            url = f"http://{seletor.ip}:5001/transacoes"
-            try:
-                print(f"Enviando transação para o seletor: {seletor.ip}")
-                response = requests.post(url, json=objeto.to_dict())
-                if response.status_code == 200:
-                    print(f"Transação processada com sucesso no seletor {seletor.ip}")
-                elif response.status_code == 503:
-                    error_message = response.json().get('error')
-                    print(f"Erro ao processar transação no seletor {seletor.ip}: {error_message}")
-                else:
-                    print(f"Erro ao processar transação no seletor {seletor.ip}: Status {response.status_code}")
-            except requests.exceptions.RequestException as e:
-                print(f"Erro ao conectar ao seletor {seletor.ip}: {e}")
+    transacao_dict = transacao.to_dict()
 
-        return jsonify(objeto)
-    else:
-        return jsonify(['Method Not Allowed'])
+    # Envia a transação para o serviço seletor
+    url_seletor = "http://seletor:5001/transacoes"  # Usando o nome do serviço no Docker Compose
+    try:
+        response = requests.post(url_seletor, json=transacao_dict)
+        if response.status_code == 200:
+            return jsonify({'message': 'Transação criada e enviada com sucesso!'}), 200
+        elif response.status_code == 503:
+            return jsonify({'error': 'Serviço seletor indisponível. Tente novamente mais tarde.'}), 503
+        else:
+            return jsonify({'error': 'Falha ao enviar transação para o seletor.'}), response.status_code
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': f'Erro ao conectar ao serviço seletor: {e}'}), 500
+
+
+
 
     
 @app.route('/transacoes/<int:id>', methods = ['GET'])
@@ -272,5 +275,6 @@ def page_not_found(error):
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    app.run(port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
 

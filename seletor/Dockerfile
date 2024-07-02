@@ -2,10 +2,10 @@ FROM python:3.11
 
 WORKDIR /app
 
+COPY requirements.txt requirements.txt
+
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . .
 
-RUN pip install -r requirements.txt
-
-EXPOSE 5001
-
-ENTRYPOINT ["python", "seletor.py"]
+CMD ["python", "seletor.py"]

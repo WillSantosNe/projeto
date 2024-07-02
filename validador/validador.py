@@ -1,4 +1,5 @@
 from datetime import datetime
+import sys
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import os
@@ -7,7 +8,7 @@ from logging.handlers import RotatingFileHandler
 
 # Initialize Flask app
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///validador.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -38,24 +39,35 @@ class Transacao(db.Model):
 
 class Validador(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(200), primary_key=False)
+    ip = db.Column(db.String(21), nullable=False)
     chave_unica = db.Column(db.String(128), unique=True, nullable=False)
     saldo = db.Column(db.Integer, nullable=False)
     transacoes_no_minuto = db.Column(db.Integer, default=0)
     ultimo_horario = db.Column(db.DateTime, default=datetime.utcnow)
+    saldo = db.Column(db.Integer, nullable=False)
+    flags = db.Column(db.Integer, default=0)
+    escolhas_consecutivas = db.Column(db.Integer, default=0)
+    vezes_banido = db.Column(db.Integer, default=0)
+    retorno_pendente = db.Column(db.Boolean, default=False)
+    em_hold = db.Column(db.Integer, default=0)
 
     def __repr__(self):
         return f"<Validador {self.id}>"
     
+
 @app.route('/validar_transacao', methods=['POST'])
 def validar_transacao():
     try:
         data = request.json
         app.logger.info(f'Recebendo transação para validação: {data}')
+        
+        # Ajustar a formatação da data para lidar com microssegundos
         transacao = Transacao(
             remetente_id=data['remetente'],
             recebedor_id=data['recebedor'],
             valor=data['valor'],
-            horario=datetime.strptime(data['horario'], "%Y-%m-%dT%H:%M:%S"),
+            horario=datetime.strptime(data['horario'], "%Y-%m-%dT%H:%M:%S.%f"),
             chave_unica=data['chave_unica']
         )
 
@@ -93,4 +105,6 @@ def validar_transacao():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(port=5002, debug=True)
+    app.run(host='0.0.0.0', port=int(sys.argv[1]), debug=True)
+
+
