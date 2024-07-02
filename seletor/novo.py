@@ -13,6 +13,11 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 @dataclass
+class Seletor(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(20), nullable=False)
+
+@dataclass
 class Validador(db.Model):
     """
     Modelo de validador para a base de dados.
@@ -52,20 +57,46 @@ def listar_validadores():
     return jsonify([validador.to_dict() for validador in validadores]), 200
 
 
+@app.route('/seletor', methods=['POST'])
+def criar_seletor():
+    data = request.get_json()
+    try:
+        novo_seletor = Seletor(nome=data['nome'], ip=data['ip'])
+        db.session.add(novo_seletor)
+        db.session.commit()
+        return jsonify({"id": novo_seletor.id, "nome": novo_seletor.nome, "ip": novo_seletor.ip}), 201
+    except Exception as e:
+        return jsonify({"error": "Falha ao criar seletor", "mensagem": str(e)}), 500
+
+
+@app.route('/seletor/<int:id>/<string:nome>/<string:ip>', methods=["POST"])
+def EditarSeletor(id, nome, ip):
+    if request.method == 'POST':
+        try:
+            validador = Seletor.query.filter_by(id=id).first()
+            if validador:
+                validador.nome = nome
+                validador.ip = ip
+                db.session.commit()
+                return jsonify({"id": validador.id, "nome": validador.nome, "ip": validador.ip}), 200
+            else:
+                return jsonify({"error": "Seletor não encontrado"}), 404
+        except Exception as e:
+            db.session.rollback()  # Rolar de volta em caso de erro
+            return jsonify({"error": "Atualização não realizada", "mensagem": str(e)}), 500
+    else:
+        return jsonify({"error": "Método não permitido"}), 405
+
+
+
+
 
 @app.route('/seletor/registrar', methods=['POST'])
 def registrar_validador():
-    """
-    Registra um novo validador no sistema.
-    Requer um saldo mínimo para o registro e retorna erro se o saldo não for suficiente.
-    """
     data = request.get_json()
-
-    # Não registra o validador caso seu saldo seja menor que 50.
     if data['saldo'] < 50:
         return jsonify({"error": "Saldo insuficiente para registrar validador"}), 400
-    
-    # Cria validador
+
     novo_validador = Validador(
         nome=data['nome'],
         ip=data['ip'],
@@ -75,16 +106,14 @@ def registrar_validador():
         escolhas=0
     )
 
-    # Adiciona validador no banco de dados.
     db.session.add(novo_validador)
     db.session.commit()
 
-    # Retorna mensagem indicando que o registro foi feito.
     return jsonify({"message": "Validador registrado com sucesso", "validador_id": novo_validador.id}), 201
 
 
 
-@app.route('/seletor/selecionar', methods=['POST'])
+@app.route('/selecionar', methods=['POST'])
 def selecionar_validadores():
     """
     Seleciona validadores para uma transação com base no valor da transação e critérios como saldo e flags.
@@ -240,8 +269,8 @@ def reintegrar_validador():
     db.session.commit()
     return jsonify({"message": "Validador reintegrado com sucesso", "validador_id": validador_reintegrado.id}), 201
 
+
 if __name__ == '__main__':
-    db.create_all()
-    app.run(debug=True)
-
-
+    with app.app_context():
+        db.create_all()
+    app.run(port=5001, debug=True)

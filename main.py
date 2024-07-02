@@ -4,7 +4,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from dataclasses import dataclass
 from datetime import date, datetime
-  
+import requests
+
 app = Flask(__name__)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
@@ -17,12 +18,13 @@ class Cliente(db.Model):
     nome: str
     senha: int
     qtdMoeda: int
-    
+
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(20), unique=False, nullable=False)
     senha = db.Column(db.String(20), unique=False, nullable=False)
     qtdMoeda = db.Column(db.Integer, unique=False, nullable=False)
 
+@dataclass
 class Seletor(db.Model):
     id: int
     nome: str
@@ -31,12 +33,14 @@ class Seletor(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(20), unique=False, nullable=False)
     ip = db.Column(db.String(15), unique=False, nullable=False)
-    
+
+@dataclass
 class Transacao(db.Model):
     id: int
     remetente: int
     recebedor: int
     valor: int
+    horario : datetime
     status: int
     
     id = db.Column(db.Integer, primary_key=True)
@@ -46,14 +50,12 @@ class Transacao(db.Model):
     horario = db.Column(db.DateTime, unique=False, nullable=False)
     status = db.Column(db.Integer, unique=False, nullable=False)
 
-
-#@app.before_first_request
-#def create_tables():
-#    db.create_all()
+with app.app_context():
+    db.create_all()
 
 @app.route("/")
 def index():
-    return render_template('api.html')
+    return jsonify(['API sem interface do banco!'])
 
 @app.route('/cliente', methods = ['GET'])
 def ListarCliente():
@@ -61,10 +63,10 @@ def ListarCliente():
         clientes = Cliente.query.all()
         return jsonify(clientes)  
 
-@app.route('/cliente/<string:nome>/<string:senha>/<int:qtdMoedas>', methods = ['POST'])
-def InserirCliente(nome, senha, qtdMoedas):
-    if request.method=='POST' and nome != '' and senha != '' and qtdMoedas != '':
-        objeto = Cliente(nome=nome, senha=senha, qtdMoedas=qtdMoedas)
+@app.route('/cliente/<string:nome>/<string:senha>/<int:qtdMoeda>', methods = ['POST'])
+def InserirCliente(nome, senha, qtdMoeda):
+    if request.method=='POST' and nome != '' and senha != '' and qtdMoeda != '':
+        objeto = Cliente(nome=nome, senha=senha, qtdMoeda=qtdMoeda)
         db.session.add(objeto)
         db.session.commit()
         return jsonify(objeto)
@@ -83,18 +85,16 @@ def UmCliente(id):
 def EditarCliente(id, qtdMoedas):
     if request.method=='POST':
         try:
-            varId = id
-            varqtdMoedas = qtdMoedas
             cliente = Cliente.query.filter_by(id=id).first()
-            db.session.commit()
             cliente.qtdMoedas = qtdMoedas
             db.session.commit()
-            return jsonify(cliente)
+            return jsonify(['Alteração feita com sucesso'])
         except Exception as e:
             data={
                 "message": "Atualização não realizada"
             }
             return jsonify(data)
+
     else:
         return jsonify(['Method Not Allowed'])
 
@@ -193,10 +193,10 @@ def CriaTransacao(rem, reb, valor):
         db.session.commit()
 		
         seletores = Seletor.query.all()
-        for i in seletores:
-            url = seletores[i].ip + '/transacao/'
-            request.post(url, data=jsonify(object))
-		
+        for seletor in seletores:
+            #Implementar a rota /localhost/<ipSeletor>/transacoes
+            url = seletor.ip + '/transacoes/'
+            requests.post(url, data=jsonify(objeto))
         return jsonify(objeto)
     else:
         return jsonify(['Method Not Allowed'])
@@ -209,7 +209,7 @@ def UmaTransacao(id):
     else:
         return jsonify(['Method Not Allowed'])
 
-@app.route('/transactions/<int:id>/<int:status>', methods=["POST"])
+@app.route('/transacoes/<int:id>/<int:status>', methods=["POST"])
 def EditaTransacao(id, status):
     if request.method=='POST':
         try:

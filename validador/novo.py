@@ -35,9 +35,10 @@ class Validador(db.Model):
     nome = db.Column(db.String(20), nullable=False)
     ip = db.Column(db.String(15), nullable=False)
     chave_unica = db.Column(db.String(64), nullable=False)
+    moeda = db.Column(db.Integer, nullable=False)  # Representando a quantidade de moeda
 
 # Rota para validação de transações por parte do validador
-@app.route('/validador/validar', methods=['POST'])
+@app.route('/validar', methods=['POST'])
 def validar_transacao():
     data = request.get_json()
     transacao_id = data.get('transacao_id')
@@ -110,7 +111,7 @@ def atualizar_saldo_e_ultima_transacao(transacao):
     remetente.ultima_transacao = transacao.horario
     db.session.commit()
 
-# Inicialização do banco de dados e execução da aplicação Flask
 if __name__ == '__main__':
-    db.create_all()
-    app.run(debug=True)
+    with app.app_context():
+        db.create_all()
+    app.run(port=5002, debug=True)
